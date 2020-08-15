@@ -5,12 +5,17 @@
  */
 package view;
 
-import controller.ImportKeyController;
+import controller.EncryptionController;
 import controller.KeysController;
 import controller.NewKeyPairGenController;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.swing.table.DefaultTableModel;
+import model.ProjectMainModel;
+import org.bouncycastle.openpgp.PGPPublicKeyRing;
+import org.bouncycastle.openpgp.PGPSecretKeyRing;
 
 /**
  *
@@ -20,11 +25,14 @@ public class MainWindow extends javax.swing.JFrame {
 
     /**
      * Creates new form MainWindow
+     * @throws java.io.IOException
      */
+    
     public MainWindow() throws IOException {
         initComponents();
-        menuItemNewKeyPair.addActionListener(new NewKeyPairGenController());
-        KeysController.getPublicKeys();
+        populateTable();
+        menuItemNewKeyPair.addActionListener(new NewKeyPairGenController(this));
+        menuItemEncryptFiles.addActionListener(new EncryptionController());
     }
 
     /**
@@ -39,31 +47,46 @@ public class MainWindow extends javax.swing.JFrame {
         jMenuItem1 = new javax.swing.JMenuItem();
         jToolBar1 = new javax.swing.JToolBar();
         jScrollPane1 = new javax.swing.JScrollPane();
-        jTable1 = new javax.swing.JTable();
+        keyTable = new javax.swing.JTable();
         jMenuBar1 = new javax.swing.JMenuBar();
         menuFile = new javax.swing.JMenu();
         menuItemNewKeyPair = new javax.swing.JMenuItem();
-        menuItemImportKey = new javax.swing.JMenuItem();
+        menuItemImportSecretKey = new javax.swing.JMenuItem();
+        menuItemImportPublicKey = new javax.swing.JMenuItem();
+        menuItemEncryptFiles = new javax.swing.JMenuItem();
         jMenu2 = new javax.swing.JMenu();
 
         jMenuItem1.setText("jMenuItem1");
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosing(java.awt.event.WindowEvent evt) {
+                formWindowClosing(evt);
+            }
+        });
 
         jToolBar1.setRollover(true);
 
-        jTable1.setModel(new javax.swing.table.DefaultTableModel(
+        keyTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null},
-                {null, null, null, null},
-                {null, null, null, null},
-                {null, null, null, null}
+                {null, null, null, null, null},
+                {null, null, null, null, null},
+                {null, null, null, null, null},
+                {null, null, null, null, null}
             },
             new String [] {
-                "Title 1", "Title 2", "Title 3", "Title 4"
+                "Name", "E-mail", "Valid From", "Valid Until", "Key-ID"
             }
-        ));
-        jScrollPane1.setViewportView(jTable1);
+        ) {
+            boolean[] canEdit = new boolean [] {
+                false, false, false, false, false
+            };
+
+            public boolean isCellEditable(int rowIndex, int columnIndex) {
+                return canEdit [columnIndex];
+            }
+        });
+        jScrollPane1.setViewportView(keyTable);
 
         menuFile.setText("File");
 
@@ -75,13 +98,24 @@ public class MainWindow extends javax.swing.JFrame {
         });
         menuFile.add(menuItemNewKeyPair);
 
-        menuItemImportKey.setText("Import Key");
-        menuItemImportKey.addActionListener(new java.awt.event.ActionListener() {
+        menuItemImportSecretKey.setText("Import Secret Key");
+        menuItemImportSecretKey.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-                menuItemImportKeyActionPerformed(evt);
+                menuItemImportSecretKeyActionPerformed(evt);
             }
         });
-        menuFile.add(menuItemImportKey);
+        menuFile.add(menuItemImportSecretKey);
+
+        menuItemImportPublicKey.setText("Import Public Key");
+        menuItemImportPublicKey.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                menuItemImportPublicKeyActionPerformed(evt);
+            }
+        });
+        menuFile.add(menuItemImportPublicKey);
+
+        menuItemEncryptFiles.setText("Encrypt File");
+        menuFile.add(menuItemEncryptFiles);
 
         jMenuBar1.add(menuFile);
 
@@ -113,13 +147,70 @@ public class MainWindow extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     private void menuItemNewKeyPairMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_menuItemNewKeyPairMouseClicked
-        new NewKeyPairGenController();
+        populateTable();
     }//GEN-LAST:event_menuItemNewKeyPairMouseClicked
 
-    private void menuItemImportKeyActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_menuItemImportKeyActionPerformed
-        ImportKeyController.importKey();
-    }//GEN-LAST:event_menuItemImportKeyActionPerformed
+    private void menuItemImportPublicKeyActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_menuItemImportPublicKeyActionPerformed
+        KeysController.importPublicKey();
+        populateTable();
+    }//GEN-LAST:event_menuItemImportPublicKeyActionPerformed
 
+    private void menuItemImportSecretKeyActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_menuItemImportSecretKeyActionPerformed
+        KeysController.importSecretKey();
+        populateTable();
+    }//GEN-LAST:event_menuItemImportSecretKeyActionPerformed
+
+    private void formWindowClosing(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosing
+        KeysController.exportAllPublicKeys();
+        KeysController.exportAllSecretKeys();
+    }//GEN-LAST:event_formWindowClosing
+
+    public void populateTable()
+    {
+        DefaultTableModel model = new DefaultTableModel(new String[] {"Name", "E-mail", "Valid From", "Valid Until", "Key ID"}, 0);
+        
+        Iterator keyRingIter =  ProjectMainModel.publicKeyRingCollection.getKeyRings();
+        while (keyRingIter.hasNext()) 
+        {
+            PGPPublicKeyRing keyRing = (PGPPublicKeyRing) keyRingIter.next();
+            System.out.println("Zorana public: " + keyRing.getPublicKey().getUserIDs().next());
+            model.addRow(new Object[] 
+                { 
+                    extractNameFromKeyId(keyRing.getPublicKey().getUserIDs().next().toString()), 
+                    extractEmailFromKeyId(keyRing.getPublicKey().getUserIDs().next().toString()), 
+                    keyRing.getPublicKey().getCreationTime(), 
+                    keyRing.getPublicKey().getValidSeconds(), 
+                    Long.toHexString(keyRing.getPublicKey().getKeyID())
+                });            
+        }
+        
+        keyRingIter =  ProjectMainModel.secretKeyRingCollection.getKeyRings();
+        while (keyRingIter.hasNext()) 
+        {
+            PGPSecretKeyRing keyRing = (PGPSecretKeyRing) keyRingIter.next();
+            System.out.println("Zorana private: " + keyRing.getSecretKey().getUserIDs().next());
+            model.addRow(new Object[] 
+            {
+                extractNameFromKeyId(keyRing.getSecretKey().getUserIDs().next().toString()), 
+                extractEmailFromKeyId(keyRing.getSecretKey().getUserIDs().next().toString()), 
+                0, 
+                0, 
+                Long.toHexString(keyRing.getSecretKey().getKeyID())
+            });            
+        }
+        
+        keyTable.setModel(model);
+    }
+    
+    private String extractNameFromKeyId(String keyId)
+    {
+        return (keyId.split("<")[0]).strip();
+    }
+    
+    private String extractEmailFromKeyId(String keyId)
+    {
+        return (keyId.split("<")[1]).split(">")[0];
+    }
     /**
      * @param args the command line arguments
      */
@@ -160,10 +251,12 @@ public class MainWindow extends javax.swing.JFrame {
     private javax.swing.JMenuBar jMenuBar1;
     private javax.swing.JMenuItem jMenuItem1;
     private javax.swing.JScrollPane jScrollPane1;
-    private javax.swing.JTable jTable1;
     private javax.swing.JToolBar jToolBar1;
+    private javax.swing.JTable keyTable;
     private javax.swing.JMenu menuFile;
-    private javax.swing.JMenuItem menuItemImportKey;
+    private javax.swing.JMenuItem menuItemEncryptFiles;
+    private javax.swing.JMenuItem menuItemImportPublicKey;
+    private javax.swing.JMenuItem menuItemImportSecretKey;
     private javax.swing.JMenuItem menuItemNewKeyPair;
     // End of variables declaration//GEN-END:variables
 }

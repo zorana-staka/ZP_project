@@ -219,4 +219,11 @@ public class NewKeyPairWindow extends javax.swing.JFrame {
         return txtFieldName;
     }
 
+    /**
+     * @return the passwordField
+     */
+    public javax.swing.JPasswordField getPasswordField() {
+        return passwordField;
+    }
+
 }
